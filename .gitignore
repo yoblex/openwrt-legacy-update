@@ -1,0 +1,6 @@
+work/
+__pycache__/
+*.bin
+*.itb
+*.tar.gz
+.DS_Store
