@@ -13,6 +13,11 @@ esac
 for f in network firewall dhcp system; do
 	[ -f "$R/$f" ] && cp "$R/$f" "/etc/config/$f" && echo "config: $f"
 done
+if [ -f "$R/dnsmasq.servers" ]; then
+	cp "$R/dnsmasq.servers" /etc/dnsmasq.servers
+	grep -qx /etc/dnsmasq.servers /etc/sysupgrade.conf || echo /etc/dnsmasq.servers >>/etc/sysupgrade.conf
+	echo "dnsmasq.servers: $(grep -c . /etc/dnsmasq.servers) entries"
+fi
 [ -f "$R/wireless.sh" ] && sh "$R/wireless.sh"
 for k in "$R"/dropbear_*_host_key; do
 	[ -f "$k" ] && cp "$k" /etc/dropbear/ && chmod 600 "/etc/dropbear/${k##*/}" && echo "dropbear: ${k##*/}"

@@ -51,7 +51,7 @@ ROUTER=192.168.1.1 ./ax6s-migrate.sh podkop    # опционально, нуж�
 | Объект | Обработка |
 |--------|-----------|
 | `network`, `firewall` | без изменений |
-| `dhcp` | удаляются хуки podkop (`server 127.0.0.42`, `noresolv`) |
+| `dhcp` | удаляются хуки podkop (`server 127.0.0.42`, `noresolv`); пересылки `/домен/IP` переносятся в `/etc/dnsmasq.servers` (`serversfile`, добавляется в `sysupgrade.conf`) |
 | `wireless` | секции переносятся на новые radio по диапазону `2g`/`5g` |
 | `system` | `compat_version 2.0` |
 | root, SSH | хэш пароля root, host keys, `authorized_keys` |
@@ -76,6 +76,11 @@ ROUTER=192.168.1.1 ./ax6s-migrate.sh podkop    # опционально, нуж�
 | `quic_disable`, `yacd`, `ss_uot`, `socks5` | `settings.disable_quic`, `settings.enable_yacd`, `enable_udp_over_tcp`, `mixed_proxy_enabled` |
 
 Удаляются: `split_dns_*`, `cache_file`, `detour`. `dont_touch_dhcp` = `0`: dnsmasq настраивает podkop.
+
+podkop 0.7 при запуске заменяет список `server` в `@dnsmasq[0]` на `127.0.0.42` и возвращает его при остановке; состояние хранится в `settings.shutdown_correctly`. Поэтому:
+
+- адресные пересылки (например, на контроллеры домена) должны быть в `serversfile`, а не в списке `server`; иначе при работе podkop они не действуют;
+- при замене `/etc/config/podkop` значение `shutdown_correctly` должно соответствовать фактическому состоянию dnsmasq, иначе перезапуск удаляет список `server`. Команда `podkop` выставляет его автоматически.
 
 Отдельно: `tools/convert.py podkop <old> <new>`.
 

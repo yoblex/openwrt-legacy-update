@@ -269,7 +269,11 @@ cmd_podkop() {
 		else
 			python3 "$HERE/tools/convert.py" podkop "$TMP/pk-src/etc/config/podkop" "$TMP/podkop.new" >&2 || die "podkop config conversion failed"
 		fi
-		rsh "$ROUTER" 'cp /etc/config/podkop /etc/config/podkop.default; cat > /etc/config/podkop && chmod 600 /etc/config/podkop' <"$TMP/podkop.new" ||
+		# shutdown_correctly is podkop's runtime state: 0 = dnsmasq is switched to sing-box and the original
+		# servers are saved in podkop_server. It must match reality, or the restart wipes the server list.
+		rsh "$ROUTER" 'f=1; uci -q get dhcp.@dnsmasq[0].server | grep -qw 127.0.0.42 && f=0
+			cp /etc/config/podkop /etc/config/podkop.default; cat > /etc/config/podkop && chmod 600 /etc/config/podkop
+			uci set podkop.settings.shutdown_correctly=$f && uci commit podkop' <"$TMP/podkop.new" ||
 			die "config upload failed"
 		log "podkop config migrated from $bk"
 	else

@@ -164,22 +164,47 @@ def wireless_script(path):
     return '\n'.join(lines) + '\n'
 
 
+SERVERS_FILE = '/etc/dnsmasq.servers'
+
+
+def _drop(s, k):
+    if k in s.opts:
+        del s.opts[k]; s.order.remove(k)
+
+
 def sanitize_dhcp(path):
-    """Drop podkop's dnsmasq hooks: podkop is not installed yet, 127.0.0.42 would leave LAN without DNS."""
+    """Prepare dhcp for the fresh system. Returns (dhcp config, dnsmasq.servers content).
+
+    - podkop hooks are dropped: podkop is not installed yet, 127.0.0.42 would leave LAN without DNS;
+    - domain-specific forwards (/domain/ip) move to a servers file: podkop owns the 'server' list
+      while running (keeps only 127.0.0.42) and would disable or drop them.
+    """
     secs = parse(path)
-    for s in secs:
-        if s.type != 'dnsmasq':
-            continue
+    moved = []
+    for s in (x for x in secs if x.type == 'dnsmasq'):
         servers = s.getlist('server')
-        if PODKOP_DNS in servers:
-            s.set('server', [x for x in servers if x != PODKOP_DNS])
-            if not s.opts['server']:
-                del s.opts['server']; s.order.remove('server')
-            if s.get('noresolv') == '1':
-                del s.opts['noresolv']; s.order.remove('noresolv')
+        had_podkop = PODKOP_DNS in servers
+        movable = s.get('serversfile') in (None, '', SERVERS_FILE)
+        keep = []
+        for x in servers:
+            if x == PODKOP_DNS:
+                continue
+            if x.startswith('/') and movable:
+                moved.append('server=' + x)
+            else:
+                keep.append(x)
+        if keep:
+            s.set('server', keep)
+        else:
+            _drop(s, 'server')
+        if had_podkop and s.get('noresolv') == '1' and not keep:
+            _drop(s, 'noresolv')
+        if moved and not s.get('serversfile'):
+            s.set('serversfile', SERVERS_FILE)
         for k in [k for k in s.order if k.startswith('podkop_')]:
-            del s.opts[k]; s.order.remove(k)
-    return dump(secs)
+            _drop(s, k)
+        break  # podkop manages only @dnsmasq[0]
+    return dump(secs), ('\n'.join(moved) + '\n') if moved else ''
 
 
 def set_compat(path):
@@ -210,7 +235,14 @@ def bundle(root, out):
         if os.path.exists(os.path.join(cfg, name)):
             write(name, read('etc/config/' + name))
     if os.path.exists(os.path.join(cfg, 'dhcp')):
-        write('dhcp', sanitize_dhcp(os.path.join(cfg, 'dhcp')))
+        dhcp, servers = sanitize_dhcp(os.path.join(cfg, 'dhcp'))
+        old_file = os.path.join(root, SERVERS_FILE.lstrip('/'))
+        if os.path.exists(old_file):
+            with open(old_file, encoding='utf-8') as f:
+                servers = f.read() + servers
+        write('dhcp', dhcp)
+        if servers:
+            write('dnsmasq.servers', servers)
     if os.path.exists(os.path.join(cfg, 'system')):
         write('system', set_compat(os.path.join(cfg, 'system')))
     if os.path.exists(os.path.join(cfg, 'wireless')):
